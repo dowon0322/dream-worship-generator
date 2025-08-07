@@ -394,6 +394,7 @@
             // Function to perform OCR using Gemini API
             async function performOCR(base64Data, mimeType) {
                 try {
+                    // API_KEY를 입력했는지 확인하는 코드
                     if (!API_KEY || API_KEY === "여기에 API 키를 입력하세요") {
                         showMessage('API 키가 설정되지 않았습니다. 코드의 API_KEY 변수에 키를 입력해주세요.', 'error');
                         return;
@@ -474,6 +475,7 @@
 
             // Function to generate title and description using Gemini API
             window.generateContent = async () => {
+                // API_KEY를 입력했는지 확인하는 코드
                 if (!API_KEY || API_KEY === "여기에 API 키를 입력하세요") {
                     showMessage('API 키가 설정되지 않았습니다. 코드의 API_KEY 변수에 키를 입력해주세요.', 'error');
                     return;
