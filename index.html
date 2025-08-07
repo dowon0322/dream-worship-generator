@@ -490,6 +490,10 @@ Dream Worship 공동체는?
 (교회주소: ${churchAddress}​​)`;
                     document.getElementById('descriptionOutput').value = generatedDescription;
 
+                    // 새로운 기능: 생성된 데이터를 localStorage에 저장
+                    localStorage.setItem('lastGeneratedTitle', generatedTitle);
+                    localStorage.setItem('lastGeneratedDescription', generatedDescription);
+
                     showMessage('성공적으로 생성되었습니다!', 'success'); // Show success message
 
                 } else {
@@ -521,7 +525,21 @@ Dream Worship 공동체는?
             throw new Error('API 호출이 너무 많습니다. 나중에 다시 시도해주세요.');
         }
 
+        // 새로운 기능: 페이지 로드 시 localStorage에서 마지막 데이터 불러오기
+        function loadLastData() {
+            const lastTitle = localStorage.getItem('lastGeneratedTitle');
+            const lastDescription = localStorage.getItem('lastGeneratedDescription');
+            
+            if (lastTitle) {
+                document.getElementById('titleOutput').value = lastTitle;
+            }
+            if (lastDescription) {
+                document.getElementById('descriptionOutput').value = lastDescription;
+            }
+        }
+
+        // 페이지가 로드되면 이 함수를 호출하여 저장된 데이터를 불러옵니다.
+        window.onload = loadLastData;
     </script>
 </body>
 </html>
-
