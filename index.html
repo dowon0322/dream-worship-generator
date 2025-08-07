@@ -154,6 +154,48 @@
             to { transform: rotate(360deg); }
         }
     </style>
+    <!-- Firebase CDN -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Firebase Configuration - Provided by the environment
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        let app, db, auth;
+        let isFirebaseInitialized = false;
+
+        window.initFirebase = async () => {
+            if (isFirebaseInitialized) return;
+            try {
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                // Sign in anonymously to get a user ID
+                await signInAnonymously(auth);
+                console.log("Firebase signed in anonymously.");
+                
+                isFirebaseInitialized = true;
+                
+                // Load the last saved data from Firestore
+                loadLastData();
+
+            } catch (error) {
+                console.error("Firebase initialization failed:", error);
+            }
+        };
+
+        // Exporting functions for global use
+        window.db = () => db;
+        window.appId = () => appId;
+        window.auth = () => auth;
+
+        // Call the initialization function when the script loads
+        window.initFirebase();
+    </script>
 </head>
 <body>
     <div class="container">
@@ -259,7 +301,7 @@
     </div>
 
     <script>
-        // API 키는 시스템에서 자동으로 제공되므로 빈 문자열로 설정합니다.
+        // 사용자가 제공한 API 키를 적용했습니다.
         const API_KEY = "AIzaSyAt-z66V7tPLqi-Y5gsFG0BKMjDcUq8H4Q";
 
         // Function to show a temporary message
@@ -396,7 +438,7 @@
             }
         }
 
-        // Function to generate title and description using Gemini API
+        // Function to generate title and description using Gemini API and save to Firestore
         async function generateContent() {
             const userInput = document.getElementById('userInput').value.trim();
 
@@ -473,8 +515,6 @@
                     });
 
                     const generatedTitle = `[대학청년연합] ${sermonTitle} (${scripture}) | ${speaker}ㅣ ${formattedDateTitle}`;
-                    document.getElementById('titleOutput').value = generatedTitle;
-
                     const generatedDescription = `[대학청년연합] ${formattedDateDescription} 오후 2시
 제목 : ${sermonTitle}
 설교 : ${speaker}
@@ -488,11 +528,12 @@ Dream Worship 공동체는?
 -예배시간: 매주일 오후 2시
 -예배장소: ${worshipPlace}
 (교회주소: ${churchAddress}​​)`;
+
+                    document.getElementById('titleOutput').value = generatedTitle;
                     document.getElementById('descriptionOutput').value = generatedDescription;
 
-                    // 새로운 기능: 생성된 데이터를 localStorage에 저장
-                    localStorage.setItem('lastGeneratedTitle', generatedTitle);
-                    localStorage.setItem('lastGeneratedDescription', generatedDescription);
+                    // Firestore에 데이터 저장
+                    await saveToFirestore(generatedTitle, generatedDescription);
 
                     showMessage('성공적으로 생성되었습니다!', 'success'); // Show success message
 
@@ -525,21 +566,52 @@ Dream Worship 공동체는?
             throw new Error('API 호출이 너무 많습니다. 나중에 다시 시도해주세요.');
         }
 
-        // 새로운 기능: 페이지 로드 시 localStorage에서 마지막 데이터 불러오기
-        function loadLastData() {
-            const lastTitle = localStorage.getItem('lastGeneratedTitle');
-            const lastDescription = localStorage.getItem('lastGeneratedDescription');
-            
-            if (lastTitle) {
-                document.getElementById('titleOutput').value = lastTitle;
+        // Firestore에 데이터 저장 함수
+        async function saveToFirestore(title, description) {
+            const db = window.db();
+            const appId = window.appId();
+            if (!db || !appId) {
+                console.error("Firestore is not initialized.");
+                return;
             }
-            if (lastDescription) {
-                document.getElementById('descriptionOutput').value = lastDescription;
+
+            try {
+                // Public data storage path for sharing with all users
+                const docRef = doc(db, `artifacts/${appId}/public/data/last_generated_content/last_result`);
+                await setDoc(docRef, {
+                    title: title,
+                    description: description,
+                    timestamp: new Date()
+                });
+                console.log("Document successfully written!");
+            } catch (e) {
+                console.error("Error adding document: ", e);
             }
         }
 
-        // 페이지가 로드되면 이 함수를 호출하여 저장된 데이터를 불러옵니다.
-        window.onload = loadLastData;
+        // Firestore에서 마지막으로 저장된 데이터 불러오기
+        function loadLastData() {
+            const db = window.db();
+            const appId = window.appId();
+            if (!db || !appId) {
+                console.error("Firestore is not initialized.");
+                return;
+            }
+
+            const docRef = doc(db, `artifacts/${appId}/public/data/last_generated_content/last_result`);
+            onSnapshot(docRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    document.getElementById('titleOutput').value = data.title;
+                    document.getElementById('descriptionOutput').value = data.description;
+                    console.log("Live data loaded from Firestore:", data);
+                } else {
+                    console.log("No such document!");
+                }
+            }, (error) => {
+                console.error("Error getting document:", error);
+            });
+        }
     </script>
 </body>
 </html>
