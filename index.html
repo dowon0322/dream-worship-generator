@@ -169,6 +169,18 @@
             </ol>
         </div>
         
+        <!-- API Key Input Section -->
+        <div class="input-group">
+            <label for="apiKeyInput" class="flex justify-between items-center">
+                <span>Gemini API 키 입력</span>
+                <span id="apiKeyStatus" class="text-xs text-red-500 font-normal">API 키가 필요합니다.</span>
+            </label>
+            <div class="flex gap-2">
+                <input type="password" id="apiKeyInput" placeholder="여기에 Gemini API 키를 붙여넣으세요" class="flex-grow">
+                <button onclick="saveApiKey()" class="btn btn-secondary flex-shrink-0">저장</button>
+            </div>
+        </div>
+
         <!-- OCR Input Section -->
         <div class="mt-4">
             <h2 class="text-xl font-semibold text-gray-800 mb-4">사진으로 텍스트 추출</h2>
@@ -263,8 +275,37 @@
         import { getAuth, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Gemini API 키를 여기에 입력하세요. 이 코드를 GitHub에 올릴 경우, 키가 노출되지 않도록 주의하세요.
-        const API_KEY = "여기에 API 키를 입력하세요";
+        let API_KEY = localStorage.getItem('geminiApiKey') || '';
+        const apiKeyInput = document.getElementById('apiKeyInput');
+        const apiKeyStatus = document.getElementById('apiKeyStatus');
+
+        function updateApiKeyStatus() {
+            if (API_KEY) {
+                apiKeyStatus.textContent = 'API 키가 설정되었습니다.';
+                apiKeyStatus.classList.remove('text-red-500');
+                apiKeyStatus.classList.add('text-green-600');
+                apiKeyInput.value = '********************'; // Show a masked value
+            } else {
+                apiKeyStatus.textContent = 'API 키가 필요합니다.';
+                apiKeyStatus.classList.remove('text-green-600');
+                apiKeyStatus.classList.add('text-red-500');
+                apiKeyInput.value = '';
+            }
+        }
+
+        window.saveApiKey = () => {
+            const key = apiKeyInput.value.trim();
+            if (key && key !== '********************') {
+                API_KEY = key;
+                localStorage.setItem('geminiApiKey', API_KEY);
+                updateApiKeyStatus();
+                showMessage('API 키가 저장되었습니다.', 'success');
+            } else if (key === '********************') {
+                showMessage('이미 저장된 키가 있습니다.', 'success');
+            } else {
+                showMessage('유효한 API 키를 입력해주세요.', 'error');
+            }
+        };
 
         // Firebase 설정 및 초기화
         const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : null);
@@ -393,13 +434,13 @@
 
             // Function to perform OCR using Gemini API
             async function performOCR(base64Data, mimeType) {
-                try {
-                    // API_KEY를 입력했는지 확인하는 코드
-                    if (!API_KEY || API_KEY === "여기에 API 키를 입력하세요") {
-                        showMessage('API 키가 설정되지 않았습니다. 코드의 API_KEY 변수에 키를 입력해주세요.', 'error');
-                        return;
-                    }
+                if (!API_KEY) {
+                    showMessage('API 키가 설정되지 않았습니다. 키를 입력하고 저장해주세요.', 'error');
+                    return;
+                }
 
+                showLoading();
+                try {
                     const prompt = "Extract all text from this image. Please provide only the extracted Korean text, without any additional comments or formatting.";
 
                     let chatHistory = [];
@@ -428,6 +469,10 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(payload)
                     });
+
+                    if (response.status === 400 || response.status === 401) {
+                         throw new Error('잘못된 API 키이거나 API 호출에 실패했습니다.');
+                    }
                     
                     const result = await response.json();
                     
@@ -444,7 +489,7 @@
                     }
                 } catch (error) {
                     console.error('OCR 처리 중 오류 발생:', error);
-                    showMessage('사진에서 텍스트를 추출하는 데 실패했습니다. 개발자 콘솔을 확인해주세요.', 'error');
+                    showMessage(`사진에서 텍스트를 추출하는 데 실패했습니다. 오류: ${error.message}`, 'error');
                 } finally {
                     hideLoading();
                 }
@@ -475,9 +520,8 @@
 
             // Function to generate title and description using Gemini API
             window.generateContent = async () => {
-                // API_KEY를 입력했는지 확인하는 코드
-                if (!API_KEY || API_KEY === "여기에 API 키를 입력하세요") {
-                    showMessage('API 키가 설정되지 않았습니다. 코드의 API_KEY 변수에 키를 입력해주세요.', 'error');
+                if (!API_KEY) {
+                    showMessage('API 키가 설정되지 않았습니다. 키를 입력하고 저장해주세요.', 'error');
                     return;
                 }
                 
@@ -527,6 +571,10 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(payload)
                     });
+
+                    if (response.status === 400 || response.status === 401) {
+                         throw new Error('잘못된 API 키이거나 API 호출에 실패했습니다.');
+                    }
                     
                     const result = await response.json();
                     
@@ -583,7 +631,7 @@ Dream Worship 공동체는?
                     }
                 } catch (error) {
                     console.error('콘텐츠 생성 중 오류 발생:', error);
-                    showMessage('정보를 추출하는 데 실패했습니다. 입력 내용을 확인하거나 잠시 후 다시 시도해주세요.', 'error');
+                    showMessage(`정보를 추출하는 데 실패했습니다. 입력 내용을 확인하거나 오류 메시지를 확인해주세요: ${error.message}`, 'error');
                 } finally {
                     hideLoading();
                 }
@@ -606,6 +654,10 @@ Dream Worship 공동체는?
                 throw new Error('API 호출이 너무 많습니다. 나중에 다시 시도해주세요.');
             }
         }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            updateApiKeyStatus();
+        });
     </script>
 </body>
 </html>
