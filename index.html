@@ -172,13 +172,23 @@
 
         // Function to initialize Firebase and set up auth state listener
         async function initFirebase() {
+            showLoading(); // Show loading indicator at the very beginning
             try {
                 const app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
 
-                // Start with a loading screen
-                showLoading();
+                // Set up auth state listener first to handle subsequent sign-in result
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        console.log("User is authenticated. UID:", user.uid);
+                        loadLastData(db, appId);
+                    } else {
+                        console.log("User is not authenticated. Signing in anonymously.");
+                        showMessage('Firebase 인증에 실패했습니다.', 'error');
+                    }
+                    hideLoading(); // Hide loading screen after auth state is checked and data is handled
+                });
 
                 // Authenticate with the provided token or sign in anonymously
                 if (initialAuthToken) {
@@ -186,26 +196,10 @@
                 } else {
                     await signInAnonymously(auth);
                 }
-
-                // Wait for auth state to be ready and then load data
-                const unsubscribe = onAuthStateChanged(auth, (user) => {
-                    if (user) {
-                        console.log("User is authenticated. UID:", user.uid);
-                        loadLastData(db, appId);
-                        // Hide loading screen after data is loaded or after a timeout
-                        setTimeout(hideLoading, 1000);
-                    } else {
-                        console.log("User is not authenticated. Signing in anonymously.");
-                        // Handle case where anonymous sign-in fails
-                        showMessage('Firebase 인증에 실패했습니다.', 'error');
-                        hideLoading(); // Failsafe to hide loading screen
-                    }
-                    unsubscribe(); // Unsubscribe after the first state change
-                });
             } catch (error) {
                 console.error("Firebase initialization failed:", error);
                 showMessage('Firebase 초기화에 실패했습니다. 개발자 콘솔을 확인해주세요.', 'error');
-                hideLoading(); // Failsafe to hide loading screen
+                hideLoading(); // Failsafe to hide loading screen on init error
             }
         }
         
@@ -541,6 +535,10 @@ Dream Worship 공동체는?
             </div>
             
             <div class="flex flex-col sm:flex-row gap-4">
+                <label for="file-input" class="btn btn-secondary flex-1 cursor-pointer">
+                    사진에서 텍스트 추출
+                    <input id="file-input" type="file" class="hidden" accept="image/*" onchange="handleFileSelect(event)" />
+                </label>
                 <button id="generateBtn" onclick="generateContent()" class="btn btn-primary flex-1">
                     콘텐츠 생성
                 </button>
