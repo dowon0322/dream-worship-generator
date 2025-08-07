@@ -166,12 +166,19 @@
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
         let db, auth;
 
+        window.addEventListener('load', async () => {
+            await initFirebase();
+        });
+
         // Function to initialize Firebase and set up auth state listener
         async function initFirebase() {
             try {
                 const app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
+
+                // Start with a loading screen
+                showLoading();
 
                 // Authenticate with the provided token or sign in anonymously
                 if (initialAuthToken) {
@@ -180,38 +187,44 @@
                     await signInAnonymously(auth);
                 }
 
-                // Set up auth state listener AFTER the initial sign-in attempt.
-                onAuthStateChanged(auth, (user) => {
+                // Wait for auth state to be ready and then load data
+                const unsubscribe = onAuthStateChanged(auth, (user) => {
                     if (user) {
                         console.log("User is authenticated. UID:", user.uid);
                         loadLastData(db, appId);
+                        // Hide loading screen after data is loaded or after a timeout
+                        setTimeout(hideLoading, 1000);
                     } else {
-                        console.log("User is not authenticated.");
+                        console.log("User is not authenticated. Signing in anonymously.");
+                        // Handle case where anonymous sign-in fails
+                        showMessage('Firebase 인증에 실패했습니다.', 'error');
+                        hideLoading(); // Failsafe to hide loading screen
                     }
+                    unsubscribe(); // Unsubscribe after the first state change
                 });
-
             } catch (error) {
                 console.error("Firebase initialization failed:", error);
+                showMessage('Firebase 초기화에 실패했습니다. 개발자 콘솔을 확인해주세요.', 'error');
+                hideLoading(); // Failsafe to hide loading screen
             }
         }
-
-        // Call the initialization function when the script loads
-        initFirebase();
         
         // Function to show a temporary message
         function showMessage(message, type = 'success') {
             const messageBox = document.getElementById('messageBox');
-            messageBox.textContent = message;
-            messageBox.className = 'message-box show'; // Reset classes
-            messageBox.classList.add(type); // Add success or error class
-            setTimeout(() => {
-                messageBox.classList.remove('show');
-            }, 3000); // Message disappears after 3 seconds
+            if (messageBox) {
+                messageBox.textContent = message;
+                messageBox.className = `message-box show ${type}`;
+                setTimeout(() => {
+                    messageBox.classList.remove('show');
+                }, 3000); // Message disappears after 3 seconds
+            }
         }
 
         // Function to copy text to clipboard
         function copyToClipboard(elementId) {
             const element = document.getElementById(elementId);
+            if (!element) return;
             element.select();
             element.setSelectionRange(0, 99999); // For mobile devices
             try {
@@ -225,11 +238,13 @@
 
         // Function to show/hide loading overlay
         function showLoading() {
-            document.getElementById('loadingOverlay').classList.add('show');
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            if (loadingOverlay) loadingOverlay.classList.add('show');
         }
 
         function hideLoading() {
-            document.getElementById('loadingOverlay').classList.remove('show');
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            if (loadingOverlay) loadingOverlay.classList.remove('show');
         }
 
         // Function to get the next Sunday's date
@@ -237,13 +252,8 @@
             const today = new Date();
             const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
 
-            let daysUntilSunday;
-            if (dayOfWeek === 0) { // If today is Sunday
-                daysUntilSunday = 0;
-            } else {
-                daysUntilSunday = (7 - dayOfWeek) % 7;
-            }
-
+            const daysUntilSunday = (dayOfWeek === 0) ? 0 : (7 - dayOfWeek);
+            
             const nextSunday = new Date(today);
             nextSunday.setDate(today.getDate() + daysUntilSunday);
 
@@ -261,11 +271,15 @@
 
         // Function to perform OCR using Gemini API
         async function performOCR(base64Data, mimeType) {
+            if (!auth || !auth.currentUser) {
+                showMessage('인증되지 않았습니다. 잠시 후 다시 시도해주세요.', 'error');
+                return;
+            }
+
+            showLoading();
+            
             try {
                 const prompt = "Extract all text from this image. Please provide only the extracted Korean text, without any additional comments or formatting.";
-
-                let chatHistory = [];
-                chatHistory.push({ role: "user", parts: [{ text: prompt }] });
                 const payload = {
                     contents: [
                         {
@@ -313,25 +327,18 @@
         }
 
         // Function to handle file selection and trigger OCR
-        async function handleFileSelect(event) {
+        function handleFileSelect(event) {
             const file = event.target.files[0];
             if (!file) return;
 
-            showLoading();
-            
-            try {
-                const reader = new FileReader();
-                reader.onload = async function(e) {
-                    const base64Data = e.target.result.split(',')[1];
-                    const mimeType = file.type;
-                    
-                    await performOCR(base64Data, mimeType);
-                };
-                reader.readAsDataURL(file);
-            } catch (error) {
-                console.error('파일 처리 중 오류 발생:', error);
-                showMessage('파일을 처리하는 데 실패했습니다. 다시 시도해주세요.', 'error');
-            }
+            const reader = new FileReader();
+            reader.onload = async function(e) {
+                const base64Data = e.target.result.split(',')[1];
+                const mimeType = file.type;
+                
+                await performOCR(base64Data, mimeType);
+            };
+            reader.readAsDataURL(file);
         }
 
         // Function to generate title and description using Gemini API and save to Firestore
@@ -507,8 +514,56 @@ Dream Worship 공동체는?
                 }
             }, (error) => {
                 console.error("Error getting document:", error);
+                showMessage('이전 데이터를 불러오는 데 실패했습니다. 새로운 콘텐츠를 생성해 보세요.', 'error');
             });
         }
     </script>
+</head>
+<body>
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="spinner"></div>
+    </div>
+    <div id="messageBox" class="message-box"></div>
+    <div class="container">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">드림워십 유튜브 제목 생성기</h1>
+        
+        <div class="input-section flex flex-col gap-4">
+            <div class="input-group">
+                <label for="userInput" class="block">주보 또는 설교 정보 입력</label>
+                <textarea id="userInput" rows="6" class="w-full" placeholder="예:
+주일예배
+제목: 주님의 이름으로 (사도행전 1:1-8)
+설교: 이준석 목사
+찬양:
+기뻐하며 왕께 노래 부르리
+주님 큰 영광 받으소서
+예수보다 더 큰 사랑"></textarea>
+            </div>
+            
+            <div class="flex flex-col sm:flex-row gap-4">
+                <button id="generateBtn" onclick="generateContent()" class="btn btn-primary flex-1">
+                    콘텐츠 생성
+                </button>
+            </div>
+        </div>
+        
+        <div class="output-section flex flex-col gap-4">
+            <div class="output-group">
+                <label for="titleOutput" class="block">유튜브 제목</label>
+                <textarea id="titleOutput" class="w-full" readonly></textarea>
+                <button onclick="copyToClipboard('titleOutput')" class="btn btn-secondary mt-2 w-full">
+                    제목 복사
+                </button>
+            </div>
+
+            <div class="output-group">
+                <label for="descriptionOutput" class="block">유튜브 설명</label>
+                <textarea id="descriptionOutput" class="w-full" readonly></textarea>
+                <button onclick="copyToClipboard('descriptionOutput')" class="btn btn-secondary mt-2 w-full">
+                    설명 복사
+                </button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
