@@ -161,36 +161,12 @@
 
         <!-- Usage Instructions Section -->
         <div class="bg-blue-50 p-6 rounded-xl border border-blue-200">
-            <h2 class="text-xl font-semibold text-blue-800 mb-4">사용법 (Vercel 배포용)</h2>
+            <h2 class="text-xl font-semibold text-blue-800 mb-4">사용법</h2>
             <ol class="list-decimal list-inside text-gray-700 space-y-2">
-                <li>Vercel 프로젝트 설정에서 `GEMINI_API_KEY` 환경 변수를 설정해주세요.</li>
-                <li>프로젝트 루트에 `/api` 폴더를 만들고, `get-api-key.js` 파일을 추가해주세요.</li>
-                <li>이제 사진을 업로드하거나 텍스트를 입력하면 결과가 자동으로 생성됩니다.</li>
+                <li>**설교 제목, 설교자, 구절, 찬양 목록**이 포함된 텍스트를 아래 입력 칸에 자유롭게 붙여넣으세요.</li>
+                <li>**'제목 및 설명란 생성'** 버튼을 클릭하면 결과가 자동으로 생성됩니다.</li>
                 <li>생성된 **'제목'**과 **'설명란'** 옆의 **'복사'** 버튼을 클릭하여 사용하세요.</li>
-                <li>새로고침해도 가장 최근 결과물이 유지됩니다.</li>
             </ol>
-        </div>
-        
-        <!-- OCR Input Section -->
-        <div class="mt-4">
-            <h2 class="text-xl font-semibold text-gray-800 mb-4">사진으로 텍스트 추출</h2>
-            <div class="flex flex-col sm:flex-row gap-4">
-                <button onclick="document.getElementById('fileInput').click()" class="btn btn-secondary w-full sm:w-1/2">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                        <path d="M10 9a3 3 0 100-6 3 3 0 000 6zM9 11a1 1 0 011-1h1a1 1 0 110 2h-1a1 1 0 01-1-1z" />
-                        <path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 5H4v6a1 1 0 001 1h10a1 1 0 001-1V8z" clip-rule="evenodd" />
-                    </svg>
-                    사진 업로드
-                </button>
-                <input type="file" id="fileInput" accept="image/*" class="hidden" onchange="handleFileSelect(event)">
-                <button onclick="document.getElementById('cameraInput').click()" class="btn btn-secondary w-full sm:w-1/2">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                        <path fill-rule="evenodd" d="M4 5a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V7a2 2 0 00-2-2h-1.586a1 1 0 01-.707-.293L11.536 3.464A1 1 0 0010.828 3H9.172a1 1 0 00-.707.293L7.293 4.586A1 1 0 016.586 5H4zm6 9a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
-                    </svg>
-                    사진 촬영
-                </button>
-                <input type="file" id="cameraInput" accept="image/*" capture="camera" class="hidden" onchange="handleFileSelect(event)">
-            </div>
         </div>
 
         <!-- Input Section -->
@@ -260,114 +236,23 @@
         <div class="spinner"></div>
     </div>
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        
-        // Vercel 환경에서는 API 키를 서버리스 함수를 통해 안전하게 가져옵니다.
-        let apiKey = null;
-
-        // Firebase 설정 및 초기화
-        let app, db, auth;
-        let userId = null;
-        try {
-            const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : null);
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-
-            if (firebaseConfig) {
-                app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                auth = getAuth(app);
-                
-                // 인증 상태 감지
-                onAuthStateChanged(auth, async (user) => {
-                    if (user) {
-                        userId = user.uid;
-                        console.log("Firebase Auth State Changed: Logged in as", userId);
-                        // 로그인 후 데이터 로드 시작
-                        await loadLastContent(db, appId);
-                    } else {
-                        console.log("Firebase Auth State Changed: Not logged in. Signing in with custom token...");
-                        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-                        if (initialAuthToken) {
-                            signInWithCustomToken(auth, initialAuthToken).catch((error) => {
-                                console.error("Custom token sign-in failed:", error);
-                            });
-                        }
-                    }
-                });
-            } else {
-                console.warn("Firebase config is not available. Firestore features will be disabled.");
-            }
-        } catch (error) {
-            console.error("Firebase initialization failed:", error);
-            showMessage('Firebase 초기화 중 오류가 발생했습니다. 일부 기능이 작동하지 않을 수 있습니다.', 'error');
-        }
-
-        // Firebase 데이터 로드 함수
-        async function loadLastContent(db, appId) {
-            try {
-                if (db) {
-                    const publicCollectionRef = collection(db, `artifacts/${appId}/public/data/generatedContent`);
-                    const docRef = doc(publicCollectionRef, 'lastGeneratedContent');
-                    
-                    // onSnapshot을 사용하여 실시간으로 데이터 변경을 감지하고 UI 업데이트
-                    onSnapshot(docRef, (doc) => {
-                        if (doc.exists()) {
-                            const data = doc.data();
-                            document.getElementById('titleOutput').value = data.title;
-                            document.getElementById('descriptionOutput').value = data.description;
-                            console.log("Firestore에서 최신 콘텐츠를 성공적으로 로드했습니다.");
-                        } else {
-                            console.log("Firestore에 저장된 콘텐츠가 없습니다.");
-                        }
-                    }, (error) => {
-                        console.error("Firestore 데이터 로드 중 오류:", error);
-                    });
-                }
-            } catch (error) {
-                console.error("loadLastContent 함수 실행 중 오류:", error);
-            }
-        }
-
-        // Firebase에 결과물을 저장하는 함수
-        async function saveContent(title, description) {
-            try {
-                if (!db || !userId) {
-                    console.error("Firebase DB 또는 사용자 ID를 사용할 수 없습니다. 데이터 저장을 건너뜁니다.");
-                    return;
-                }
-                const publicCollectionRef = collection(db, `artifacts/${appId}/public/data/generatedContent`);
-                const docRef = doc(publicCollectionRef, 'lastGeneratedContent');
-                await setDoc(docRef, {
-                    title: title,
-                    description: description,
-                    timestamp: new Date()
-                });
-                console.log("Firestore에 콘텐츠가 성공적으로 저장되었습니다.");
-            } catch (error) {
-                console.error("Firestore에 데이터 저장 중 오류:", error);
-                showMessage("결과 저장에 실패했습니다. 개발자 콘솔을 확인해주세요.", "error");
-            }
-        }
-
+    <script>
         // Function to show a temporary message
         function showMessage(message, type = 'success') {
             const messageBox = document.getElementById('messageBox');
             messageBox.textContent = message;
-            messageBox.className = 'message-box show';
-            messageBox.classList.add(type);
+            messageBox.className = 'message-box show'; // Reset classes
+            messageBox.classList.add(type); // Add success or error class
             setTimeout(() => {
                 messageBox.classList.remove('show');
-            }, 3000);
+            }, 3000); // Message disappears after 3 seconds
         }
 
         // Function to copy text to clipboard
-        window.copyToClipboard = (elementId) => {
+        function copyToClipboard(elementId) {
             const element = document.getElementById(elementId);
             element.select();
-            element.setSelectionRange(0, 99999);
+            element.setSelectionRange(0, 99999); // For mobile devices
             try {
                 document.execCommand('copy');
                 showMessage('클립보드에 복사되었습니다!', 'success');
@@ -375,7 +260,7 @@
                 console.error('클립보드 복사 실패:', err);
                 showMessage('복사 실패! 수동으로 복사해 주세요.', 'error');
             }
-        };
+        }
 
         // Function to show/hide loading overlay
         function showLoading() {
@@ -389,8 +274,17 @@
         // Function to get the next Sunday's date
         function getNextSundayDate() {
             const today = new Date();
-            const dayOfWeek = today.getDay();
-            let daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
+            const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+
+            let daysUntilSunday;
+            if (dayOfWeek === 0) { // If today is Sunday
+                daysUntilSunday = 0;
+            } else if (dayOfWeek === 6) { // If today is Saturday
+                daysUntilSunday = 1; // Tomorrow is Sunday
+            } else {
+                daysUntilSunday = (7 - dayOfWeek) % 7;
+            }
+
             const nextSunday = new Date(today);
             nextSunday.setDate(today.getDate() + daysUntilSunday);
 
@@ -405,136 +299,50 @@
                 formattedDescription: `${year}년 ${month}월 ${day}일 (${dayName})`
             };
         }
-        
-        // Vercel 서버리스 함수를 통해 API 키를 가져오는 함수
-        async function getApiKey() {
-            if (apiKey) return apiKey;
 
-            try {
-                const response = await fetch('/api/get-api-key');
-                if (!response.ok) {
-                    throw new Error('API 키를 가져오는 데 실패했습니다.');
+        // Exponential backoff for API calls
+        async function fetchWithExponentialBackoff(url, options, retries = 3, delay = 1000) {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    if (response.ok) {
+                        return response;
+                    } else if (response.status === 429) { // Too Many Requests
+                        console.warn(`Rate limit hit. Retrying in ${delay / 1000}s...`);
+                        await new Promise(res => setTimeout(res, delay));
+                        delay *= 2; // Double the delay
+                    } else {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                } catch (error) {
+                    if (i === retries - 1) throw error;
+                    console.error(`Fetch error: ${error.message}. Retrying...`);
+                    await new Promise(res => setTimeout(res, delay));
+                    delay *= 2;
                 }
-                const data = await response.json();
-                if (!data.apiKey) {
-                    throw new Error('API 키가 설정되지 않았습니다. Vercel 환경 변수를 확인해주세요.');
-                }
-                apiKey = data.apiKey;
-                return apiKey;
-            } catch (error) {
-                console.error('API 키 로드 오류:', error);
-                throw error;
             }
         }
 
-        // Function to perform OCR using Gemini API
-        window.performOCR = async (base64Data, mimeType) => {
+        // Function to generate title and description using LLM
+        async function generateContent() {
+            const userInput = document.getElementById('userInput').value.trim();
+
+            if (!userInput) {
+                showMessage('정보 입력 칸에 내용을 입력해주세요.', 'error');
+                return;
+            }
+
+            showLoading(); // Show loading indicator
+
             try {
-                showLoading();
-                const currentApiKey = await getApiKey();
-
-                const prompt = "Extract all text from this image. Please provide only the extracted Korean text, without any additional comments or formatting.";
-
+                // LLM API call to extract structured data
                 let chatHistory = [];
-                chatHistory.push({ role: "user", parts: [{ text: prompt }] });
-                const payload = {
-                    contents: [
-                        {
-                            role: "user",
-                            parts: [
-                                { text: prompt },
-                                {
-                                    inlineData: {
-                                        mimeType: mimeType,
-                                        data: base64Data
-                                    }
-                                }
-                            ]
-                        }
-                    ],
-                };
-                
-                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${currentApiKey}`;
-                
-                const response = await fetchWithExponentialBackoff(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                if (response.status === 400 || response.status === 401) {
-                     throw new Error('API 호출에 실패했습니다. 키가 잘못되었거나 만료되었을 수 있습니다.');
-                }
-                
-                const result = await response.json();
-                
-                if (result.candidates && result.candidates.length > 0 &&
-                    result.candidates[0].content && result.candidates[0].content.parts &&
-                    result.candidates[0].content.parts.length > 0) {
-                    const extractedText = result.candidates[0].content.parts[0].text;
-                    document.getElementById('userInput').value = extractedText;
-                    showMessage('사진에서 텍스트를 성공적으로 추출했습니다!', 'success');
-                    // OCR 완료 후 바로 결과 생성 함수 호출
-                    await generateContent();
-                } else {
-                    throw new Error('API 응답에서 텍스트를 찾을 수 없습니다.');
-                }
-            } catch (error) {
-                console.error('OCR 처리 중 오류 발생:', error);
-                showMessage(`사진에서 텍스트를 추출하는 데 실패했습니다. 오류: ${error.message}`, 'error');
-            } finally {
-                hideLoading();
-            }
-        };
-
-        // Function to handle file selection and trigger OCR
-        window.handleFileSelect = async (event) => {
-            try {
-                const file = event.target.files[0];
-                if (!file) return;
-
-                showLoading();
-                
-                const reader = new FileReader();
-                reader.onload = async function(e) {
-                    const base64Data = e.target.result.split(',')[1];
-                    const mimeType = file.type;
-                    
-                    await performOCR(base64Data, mimeType);
-                };
-                reader.readAsDataURL(file);
-            } catch (error) {
-                console.error('파일 처리 중 오류 발생:', error);
-                showMessage('파일을 처리하는 데 실패했습니다. 다시 시도해주세요.', 'error');
-                hideLoading();
-            }
-        };
-
-        // Function to generate title and description using Gemini API
-        window.generateContent = async () => {
-            try {
-                const userInput = document.getElementById('userInput').value.trim();
-
-                if (!userInput) {
-                    showMessage('정보 입력 칸에 내용을 입력해주세요.', 'error');
-                    return;
-                }
-
-                showLoading();
-                const currentApiKey = await getApiKey();
-
-                const prompt = `다음 텍스트에서 설교 제목, 설교자, 구절, 찬양 목록을 추출하여 JSON 형식으로 반환하세요.
-                - 설교 제목은 'sermonTitle'
-                - 설교자는 'speaker'
-                - 구절은 'scripture'
-                - 찬양 목록은 배열 형태로 'praiseSongs'
-                키 값으로 지정해주세요. 추가적인 설명 없이 JSON 객체만 반환하세요.
-                
-                입력 텍스트:
-                ${userInput}`;
+                chatHistory.push({ role: "user", parts: [{ text: `다음 텍스트에서 설교 제목, 설교자, 구절, 찬양 목록을 추출해줘. 찬양 목록은 각 찬양곡을 별도의 항목으로 분리해줘. 날짜 정보는 무시해도 돼.
+텍스트:
+${userInput}` }] });
 
                 const payload = {
-                    contents: [{ parts: [{ text: prompt }] }],
+                    contents: chatHistory,
                     generationConfig: {
                         responseMimeType: "application/json",
                         responseSchema: {
@@ -547,53 +355,59 @@
                                     "type": "ARRAY",
                                     "items": { "type": "STRING" }
                                 }
-                            }
+                            },
+                            "required": ["sermonTitle", "speaker", "scripture", "praiseSongs"]
                         }
                     }
                 };
 
-                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${currentApiKey}`;
-                
+                const apiKey = "AIzaSyAt-z66V7tPLqi-Y5gsFG0BKMjDcUq8H4Q"; // Canvas will automatically provide this
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
                 const response = await fetchWithExponentialBackoff(apiUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
 
-                if (response.status === 400 || response.status === 401) {
-                     throw new Error('API 호출에 실패했습니다. 키가 잘못되었거나 만료되었을 수 있습니다.');
-                }
-                
                 const result = await response.json();
-                
-                if (result.candidates && result.candidates.length > 0 &&
-                    result.candidates[0].content && result.candidates[0].content.parts &&
-                    result.candidates[0].content.parts.length > 0) {
-                    const jsonString = result.candidates[0].content.parts[0].text;
-                    const extractedData = JSON.parse(jsonString);
 
-                    const { sermonTitle, speaker, scripture, praiseSongs } = extractedData;
+                if (!result.candidates || result.candidates.length === 0 || !result.candidates[0].content || !result.candidates[0].content.parts || result.candidates[0].content.parts.length === 0) {
+                    throw new Error("API 응답 구조가 예상과 다릅니다. 다시 시도해주세요.");
+                }
 
-                    if (!sermonTitle || !speaker || !scripture || !praiseSongs || praiseSongs.length === 0) {
-                        showMessage('필수 정보 (설교 제목, 설교자, 구절, 찬양) 중 일부가 누락되었습니다. 입력 내용을 확인해주세요.', 'error');
-                        hideLoading();
-                        return;
-                    }
+                const jsonString = result.candidates[0].content.parts[0].text;
+                const extractedData = JSON.parse(jsonString);
 
-                    const sundayDates = getNextSundayDate();
-                    const formattedDateTitle = sundayDates.formattedTitle;
-                    const formattedDateDescription = sundayDates.formattedDescription;
+                const { sermonTitle, speaker, scripture, praiseSongs } = extractedData;
 
-                    const worshipPlace = "ICT밸리 C동 1층";
-                    const churchAddress = "https://naver.me/GI3hQOuu";
+                // Validate extracted data
+                if (!sermonTitle || !speaker || !scripture || !praiseSongs || praiseSongs.length === 0) {
+                    showMessage('필수 정보 (설교 제목, 설교자, 구절, 찬양) 중 일부가 누락되었습니다. 입력 내용을 확인해주세요.', 'error');
+                    return;
+                }
 
-                    let formattedPraiseSongs = '';
-                    praiseSongs.forEach((song, index) => {
-                        formattedPraiseSongs += `${index + 1}. ${song.trim()}\n`;
-                    });
+                // Automatic date calculation
+                const sundayDates = getNextSundayDate();
+                const formattedDateTitle = sundayDates.formattedTitle;
+                const formattedDateDescription = sundayDates.formattedDescription;
 
-                    const generatedTitle = `[대학청년연합] ${sermonTitle} (${scripture}) | ${speaker}ㅣ ${formattedDateTitle}`;
-                    const generatedDescription = `[대학청년연합] ${formattedDateDescription} 오후 2시
+                // Fixed worship location and address
+                const worshipPlace = "ICT밸리 C동 1층";
+                const churchAddress = "https://naver.me/GI3hQOuu";
+
+                // Praise songs formatting
+                let formattedPraiseSongs = '';
+                praiseSongs.forEach((song, index) => {
+                    formattedPraiseSongs += `${index + 1}. ${song.trim()}\n`;
+                });
+
+                // Generate Title
+                const generatedTitle = `[대학청년연합] ${sermonTitle} (${scripture}) | ${speaker}ㅣ ${formattedDateTitle}`;
+                document.getElementById('titleOutput').value = generatedTitle;
+
+                // Generate Description
+                const generatedDescription = `[대학청년연합] ${formattedDateDescription} 오후 2시
 제목 : ${sermonTitle}
 설교 : ${speaker}
 
@@ -606,47 +420,17 @@ Dream Worship 공동체는?
 -예배시간: 매주일 오후 2시
 -예배장소: ${worshipPlace}
 (교회주소: ${churchAddress}​​)`;
-                    
-                    // 생성된 결과를 화면에 표시하고 Firestore에 저장
-                    document.getElementById('titleOutput').value = generatedTitle;
-                    document.getElementById('descriptionOutput').value = generatedDescription;
-                    if (db && userId) {
-                        await saveContent(generatedTitle, generatedDescription);
-                    }
+                document.getElementById('descriptionOutput').value = generatedDescription;
 
-                    showMessage('성공적으로 생성되었습니다!', 'success');
+                showMessage('성공적으로 생성되었습니다!', 'success'); // Show success message
 
-                } else {
-                    throw new Error('API 응답에서 유효한 JSON을 찾을 수 없습니다.');
-                }
             } catch (error) {
                 console.error('콘텐츠 생성 중 오류 발생:', error);
-                showMessage(`정보를 추출하는 데 실패했습니다. 입력 내용을 확인하거나 오류 메시지를 확인해주세요: ${error.message}`, 'error');
+                showMessage('정보를 추출하는 데 실패했습니다. 입력 내용을 확인하거나 잠시 후 다시 시도해주세요.', 'error');
             } finally {
-                hideLoading();
+                hideLoading(); // Hide loading indicator
             }
-        };
-        
-        // Exponential backoff retry logic for API calls
-        async function fetchWithExponentialBackoff(url, options, retries = 3, delay = 1000) {
-            for (let i = 0; i < retries; i++) {
-                try {
-                    const response = await fetch(url, options);
-                    if (response.status !== 429) {
-                        return response;
-                    }
-                } catch (error) {
-                    console.error('Fetch attempt failed:', error);
-                    if (i === retries - 1) throw error;
-                }
-                await new Promise(res => setTimeout(res, delay * Math.pow(2, i)));
-            }
-            throw new Error('API 호출이 너무 많습니다. 나중에 다시 시도해주세요.');
         }
-        
-        document.addEventListener('DOMContentLoaded', () => {
-            // 초기 로딩 시 별도 작업 없음
-        });
     </script>
 </body>
 </html>
