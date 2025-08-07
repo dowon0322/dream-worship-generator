@@ -157,153 +157,47 @@
     <!-- Firebase CDN -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Firebase Configuration - Provided by the environment
         const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        let db, auth;
 
-        let app, db, auth;
-        let isFirebaseInitialized = false;
-
-        window.initFirebase = async () => {
-            if (isFirebaseInitialized) return;
+        // Function to initialize Firebase and set up auth state listener
+        async function initFirebase() {
             try {
-                app = initializeApp(firebaseConfig);
+                const app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
 
-                // Sign in anonymously to get a user ID
-                await signInAnonymously(auth);
-                console.log("Firebase signed in anonymously.");
-                
-                isFirebaseInitialized = true;
-                
-                // Load the last saved data from Firestore
-                loadLastData();
+                // Authenticate with the provided token or sign in anonymously
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                // Set up auth state listener AFTER the initial sign-in attempt.
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        console.log("User is authenticated. UID:", user.uid);
+                        loadLastData(db, appId);
+                    } else {
+                        console.log("User is not authenticated.");
+                    }
+                });
 
             } catch (error) {
                 console.error("Firebase initialization failed:", error);
             }
-        };
-
-        // Exporting functions for global use
-        window.db = () => db;
-        window.appId = () => appId;
-        window.auth = () => auth;
+        }
 
         // Call the initialization function when the script loads
-        window.initFirebase();
-    </script>
-</head>
-<body>
-    <div class="container">
-        <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">드림워십 유튜브 제목 생성기</h1>
-
-        <!-- Usage Instructions Section -->
-        <div class="bg-blue-50 p-6 rounded-xl border border-blue-200">
-            <h2 class="text-xl font-semibold text-blue-800 mb-4">사용법</h2>
-            <ol class="list-decimal list-inside text-gray-700 space-y-2">
-                <li>**설교 콘티 사진**을 찍거나 업로드하면 텍스트가 자동으로 입력됩니다.</li>
-                <li>**'제목 및 설명란 생성'** 버튼을 클릭하면 결과가 자동으로 생성됩니다.</li>
-                <li>생성된 **'제목'**과 **'설명란'** 옆의 **'복사'** 버튼을 클릭하여 사용하세요.</li>
-            </ol>
-        </div>
+        initFirebase();
         
-        <!-- OCR Input Section -->
-        <div class="mt-4">
-            <h2 class="text-xl font-semibold text-gray-800 mb-4">사진으로 텍스트 추출</h2>
-            <div class="flex flex-col sm:flex-row gap-4">
-                <button onclick="document.getElementById('fileInput').click()" class="btn btn-secondary w-full sm:w-1/2">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                        <path d="M10 9a3 3 0 100-6 3 3 0 000 6zM9 11a1 1 0 011-1h1a1 1 0 110 2h-1a1 1 0 01-1-1z" />
-                        <path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 5H4v6a1 1 0 001 1h10a1 1 0 001-1V8z" clip-rule="evenodd" />
-                    </svg>
-                    사진 업로드
-                </button>
-                <input type="file" id="fileInput" accept="image/*" class="hidden" onchange="handleFileSelect(event)">
-                <button onclick="document.getElementById('cameraInput').click()" class="btn btn-secondary w-full sm:w-1/2">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                        <path fill-rule="evenodd" d="M4 5a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V7a2 2 0 00-2-2h-1.586a1 1 0 01-.707-.293L11.536 3.464A1 1 0 0010.828 3H9.172a1 1 0 00-.707.293L7.293 4.586A1 1 0 016.586 5H4zm6 9a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
-                    </svg>
-                    사진 촬영
-                </button>
-                <input type="file" id="cameraInput" accept="image/*" capture="camera" class="hidden" onchange="handleFileSelect(event)">
-            </div>
-        </div>
-
-        <!-- Input Section -->
-        <div class="grid grid-cols-1 gap-6">
-            <div class="input-group">
-                <label for="userInput">정보 입력 (설교 제목, 설교자, 구절, 찬양 목록을 자유롭게 입력)</label>
-                <textarea id="userInput" rows="10" placeholder="예:
-이번 주일 설교 제목은 '사랑의 나눔 있는 곳에 하나님께서 계시도다'입니다.
-설교자는 김태용 목사님이고, 구절은 요한일서 4장 7절~12절입니다.
-찬양은
-1. 왕이신 하나님
-2. 전능하신 하나님
-3. 저 높은 하늘 위로
-4. 지금 서 있는 곳에서
-5. 우리 주는 위대하며(후렴)
-입니다.
-
-또는 이렇게 입력해도 됩니다:
-김태용 목사님 설교 제목은 '은혜로운 하루'이고, 구절은 시편 23편 1절~6절입니다.
-찬양은 '주님은 산 같아서', '나의 힘이 되신 여호와'입니다." class="rounded-md"></textarea>
-            </div>
-        </div>
-
-        <button onclick="generateContent()" class="btn btn-primary mt-4">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd" />
-            </svg>
-            제목 및 설명란 생성
-        </button>
-
-        <!-- Output Section -->
-        <div class="output-section mt-8">
-            <h2 class="text-xl font-semibold text-gray-800 mb-4">결과</h2>
-            <div class="input-group mb-4">
-                <label for="titleOutput">제목</label>
-                <div class="flex items-center gap-2">
-                    <textarea id="titleOutput" rows="2" readonly class="flex-grow rounded-md"></textarea>
-                    <button onclick="copyToClipboard('titleOutput')" class="btn btn-secondary flex-shrink-0">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                            <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" />
-                            <path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2H6zM5 9a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1z" />
-                        </svg>
-                        복사
-                    </button>
-                </div>
-            </div>
-            <div class="input-group">
-                <label for="descriptionOutput">설명란</label>
-                <div class="flex items-center gap-2">
-                    <textarea id="descriptionOutput" rows="10" readonly class="flex-grow rounded-md"></textarea>
-                    <button onclick="copyToClipboard('descriptionOutput')" class="btn btn-secondary flex-shrink-0">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                            <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" />
-                            <path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2H6zM5 9a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1z" />
-                        </svg>
-                        복사
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Message Box for Copy Confirmation -->
-    <div id="messageBox" class="message-box"></div>
-    <!-- Loading Overlay -->
-    <div id="loadingOverlay" class="loading-overlay">
-        <div class="spinner"></div>
-    </div>
-
-    <script>
-        // 사용자가 제공한 API 키를 적용했습니다.
-        const API_KEY = "AIzaSyAt-z66V7tPLqi-Y5gsFG0BKMjDcUq8H4Q";
-
         // Function to show a temporary message
         function showMessage(message, type = 'success') {
             const messageBox = document.getElementById('messageBox');
@@ -389,6 +283,8 @@
                     ],
                 };
                 
+                // Use the environment-provided API key
+                const API_KEY = "";
                 const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${API_KEY}`;
                 
                 const response = await fetchWithExponentialBackoff(apiUrl, {
@@ -446,6 +342,11 @@
                 showMessage('정보 입력 칸에 내용을 입력해주세요.', 'error');
                 return;
             }
+            
+            if (!db) {
+                showMessage('데이터베이스 연결 실패. 잠시 후 다시 시도해주세요.', 'error');
+                return;
+            }
 
             showLoading(); // Show loading indicator
 
@@ -478,7 +379,9 @@
                         }
                     }
                 };
-
+                
+                // Use the environment-provided API key
+                const API_KEY = "";
                 const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${API_KEY}`;
                 
                 const response = await fetchWithExponentialBackoff(apiUrl, {
@@ -533,7 +436,7 @@ Dream Worship 공동체는?
                     document.getElementById('descriptionOutput').value = generatedDescription;
 
                     // Firestore에 데이터 저장
-                    await saveToFirestore(generatedTitle, generatedDescription);
+                    await saveToFirestore(db, appId, generatedTitle, generatedDescription);
 
                     showMessage('성공적으로 생성되었습니다!', 'success'); // Show success message
 
@@ -567,14 +470,11 @@ Dream Worship 공동체는?
         }
 
         // Firestore에 데이터 저장 함수
-        async function saveToFirestore(title, description) {
-            const db = window.db();
-            const appId = window.appId();
+        async function saveToFirestore(db, appId, title, description) {
             if (!db || !appId) {
                 console.error("Firestore is not initialized.");
                 return;
             }
-
             try {
                 // Public data storage path for sharing with all users
                 const docRef = doc(db, `artifacts/${appId}/public/data/last_generated_content/last_result`);
@@ -590,14 +490,11 @@ Dream Worship 공동체는?
         }
 
         // Firestore에서 마지막으로 저장된 데이터 불러오기
-        function loadLastData() {
-            const db = window.db();
-            const appId = window.appId();
+        async function loadLastData(db, appId) {
             if (!db || !appId) {
                 console.error("Firestore is not initialized.");
                 return;
             }
-
             const docRef = doc(db, `artifacts/${appId}/public/data/last_generated_content/last_result`);
             onSnapshot(docRef, (docSnap) => {
                 if (docSnap.exists()) {
